@@ -187,7 +187,7 @@ class ExcelSearch {
   }
 
   private def search(file: File, regex: Regex): Unit = {
-    Using.resource(WorkbookFactory.create(file, null, false)) { workbook =>
+    Using.resource(WorkbookFactory.create(file, null, true)) { workbook =>
       workbook.forEach(sheet => {
         val sheetName = sheet.getSheetName
 
