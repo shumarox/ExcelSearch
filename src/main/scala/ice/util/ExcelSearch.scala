@@ -57,6 +57,10 @@ object ExcelSearch {
       printResult(result)
     } else {
       createResultBook(new File(args(2)), result)
+
+      if (File.separatorChar == '\\') {
+        Runtime.getRuntime.exec(s"cmd /c start ${args(2)}")
+      }
     }
   }
 
