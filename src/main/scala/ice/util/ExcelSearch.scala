@@ -112,13 +112,13 @@ object ExcelSearch {
       cell = row.createCell(2)
       val link = creationHelper.createHyperlink(HyperlinkType.URL)
 
-      val fileNameString = matchedInfo.file.getAbsolutePath.replaceAll("\\\\", "/")
+      val fileNameString = matchedInfo.file.getAbsolutePath.replaceAll("\\\\", "/").replaceAll(" ", "%20")
 
       val locationString =
         if (matchedInfo.sheetName == null || matchedInfo.sheetName.isEmpty) {
           ""
         } else {
-          s"#${matchedInfo.sheetName}!${matchedInfo.location}"
+          s"#'${matchedInfo.sheetName.replaceAll(" ", "%20")}'!${matchedInfo.location}"
         }
 
       link.setAddress(s"file:///$fileNameString$locationString")
