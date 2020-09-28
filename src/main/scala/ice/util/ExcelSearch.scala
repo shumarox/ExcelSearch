@@ -132,8 +132,6 @@ object ExcelSearch {
       rowIndex += 1
     }
 
-    (0 until 4).foreach(i => sheet.autoSizeColumn(i, true))
-
     Using.resource(new BufferedOutputStream(new FileOutputStream(file))) { outputStream =>
       workbook.write(outputStream)
     }
