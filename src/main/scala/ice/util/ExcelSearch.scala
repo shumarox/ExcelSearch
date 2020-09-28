@@ -1,18 +1,17 @@
 package ice.util
 
 import java.io.{BufferedOutputStream, File, FileOutputStream, IOException}
-import java.net.URLEncoder
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.text.SimpleDateFormat
 
 import ice.util.ExcelSearch.r1c1ToA1
 import org.apache.poi.common.usermodel.HyperlinkType
-import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShape, HSSFShapeGroup, HSSFSimpleShape}
+import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShapeGroup, HSSFSimpleShape}
 import org.apache.poi.ss.formula.eval.ErrorEval
-import org.apache.poi.ss.usermodel.{Font, IndexedColors, _}
+import org.apache.poi.ss.usermodel._
 import org.apache.poi.ss.util.CellReference
-import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShape, XSSFShapeGroup, XSSFSimpleShape}
+import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimpleShape}
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -22,11 +21,15 @@ sealed case class MatchedType(order: Int)
 
 object MatchedType {
 
-  object Cell extends MatchedType(0)
+  object BookName extends MatchedType(0)
 
-  object Comment extends MatchedType(1)
+  object SheetName extends MatchedType(1)
 
-  object Shape extends MatchedType(2)
+  object Cell extends MatchedType(2)
+
+  object Comment extends MatchedType(3)
+
+  object Shape extends MatchedType(4)
 
 }
 
@@ -35,6 +38,12 @@ abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val she
 
   override def toString: String = s"${file.getAbsolutePath},$sheetName,$name,$location,$text"
 }
+
+class MatchedBookNameInfo(file: File, text: String)
+  extends MatchedInfo(MatchedType.BookName, file, "", "ブック名", 0, 0, text)
+
+class MatchedSheetNameInfo(file: File, sheetName: String, text: String)
+  extends MatchedInfo(MatchedType.SheetName, file, sheetName, "シート名", 0, 0, text)
 
 class MatchedCellInfo(file: File, sheetName: String, row: Int, col: Int, text: String)
   extends MatchedInfo(MatchedType.Cell, file, sheetName, r1c1ToA1(row, col), row, col, text)
@@ -49,6 +58,7 @@ object ExcelSearch {
   def main(args: Array[String]): Unit = {
     if (args.length == 0 || args.length > 3 || args(0) == null || args(0).trim().isEmpty || args(1) == null || args(1).isEmpty) {
       System.err.println("Requires target directory and regular expression arguments")
+      System.exit(1)
     }
 
     val result = new ExcelSearch().search(args(0), new Regex(args(1)))
@@ -88,26 +98,36 @@ object ExcelSearch {
     val style = workbook.createCellStyle
     style.setFont(font)
 
-    result.foreach { matchInfo =>
+    result.foreach { matchedInfo =>
       val row = sheet.createRow(rowIndex)
 
       var cell: Cell = null
 
       cell = row.createCell(0)
-      cell.setCellValue(matchInfo.file.getAbsolutePath)
+      cell.setCellValue(matchedInfo.file.getAbsolutePath)
 
       cell = row.createCell(1)
-      cell.setCellValue(matchInfo.sheetName)
+      cell.setCellValue(matchedInfo.sheetName)
 
       cell = row.createCell(2)
       val link = creationHelper.createHyperlink(HyperlinkType.URL)
-      link.setAddress(s"file:///${matchInfo.file.getAbsolutePath.replaceAll("\\\\", "/")}#${matchInfo.sheetName}!${URLEncoder.encode(matchInfo.location, "UTF-8")}")
+
+      val fileNameString = matchedInfo.file.getAbsolutePath.replaceAll("\\\\", "/")
+
+      val locationString =
+        if (matchedInfo.sheetName == null || matchedInfo.sheetName.isEmpty) {
+          ""
+        } else {
+          s"#${matchedInfo.sheetName}!${matchedInfo.location}"
+        }
+
+      link.setAddress(s"file:///$fileNameString$locationString")
       cell.setHyperlink(link)
-      cell.setCellValue(matchInfo.name)
+      cell.setCellValue(matchedInfo.name)
       cell.setCellStyle(style)
 
       cell = row.createCell(3)
-      cell.setCellValue(matchInfo.text)
+      cell.setCellValue(matchedInfo.text)
 
       rowIndex += 1
     }
@@ -192,8 +212,18 @@ class ExcelSearch {
 
   private def search(file: File, regex: Regex): Unit = {
     Using.resource(WorkbookFactory.create(file, null, true)) { workbook =>
+      val bookName = file.getName
+
+      if (regex.findFirstIn(bookName).nonEmpty) {
+        resultBuffer += new MatchedBookNameInfo(file, bookName)
+      }
+
       workbook.forEach(sheet => {
         val sheetName = sheet.getSheetName
+
+        if (regex.findFirstIn(sheetName).nonEmpty) {
+          resultBuffer += new MatchedSheetNameInfo(file, sheetName, sheetName)
+        }
 
         sheet.forEach(row => row.forEach(cell => {
           Try(getCellValue(cell)).foreach { value =>
@@ -227,26 +257,26 @@ class ExcelSearch {
   }
 
   private def walkShape(shape: Any, ancestorRow: Int, ancestorColumn: Int, processShape: (String, Int, Int, String) => ()): Unit = {
-    def getXSSFRowColumnIndex(shape: XSSFShape): (Int, Int) = {
-      Option(shape.getAnchor.asInstanceOf[XSSFClientAnchor]).map(anchor => (anchor.getRow1, anchor.getCol1.toInt)).getOrElse((ancestorRow, ancestorColumn))
-    }
-
-    def getHSSFRowColumnIndex(shape: HSSFShape): (Int, Int) = {
-      Option(shape.getAnchor.asInstanceOf[HSSFClientAnchor]).map(anchor => (anchor.getRow1, anchor.getCol1.toInt)).getOrElse((ancestorRow, ancestorColumn))
-    }
+    def getRowColumnIndex(shape: Shape): (Int, Int) =
+      shape.getAnchor match {
+        case null => (ancestorRow, ancestorColumn)
+        case anchor: XSSFClientAnchor => (anchor.getRow1, anchor.getCol1.toInt)
+        case anchor: HSSFClientAnchor => (anchor.getRow1, anchor.getCol1.toInt)
+        case _ => (ancestorRow, ancestorColumn)
+      }
 
     shape match {
       case shape: XSSFSimpleShape =>
-        val (row, col) = getXSSFRowColumnIndex(shape)
+        val (row, col) = getRowColumnIndex(shape)
         processShape(shape.getShapeName, row, col, shape.getText)
       case shape: HSSFSimpleShape =>
-        val (row, col) = getHSSFRowColumnIndex(shape)
+        val (row, col) = getRowColumnIndex(shape)
         processShape(shape.getShapeName, row, col, shape.getString.getString)
       case group: XSSFShapeGroup =>
-        val (row, col) = getXSSFRowColumnIndex(group)
+        val (row, col) = getRowColumnIndex(group)
         group.forEach(walkShape(_, row, col, processShape))
       case group: HSSFShapeGroup =>
-        val (row, col) = getHSSFRowColumnIndex(group)
+        val (row, col) = getRowColumnIndex(group)
         group.forEach(walkShape(_, row, col, processShape))
       case _ =>
     }
