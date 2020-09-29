@@ -90,7 +90,7 @@ object ExcelSearch {
     }
   }
 
-  private def printMatchedInfo(matchedInfo: MatchedInfo): Unit = {
+  def printMatchedInfo(matchedInfo: MatchedInfo): Unit = {
     System.out.println(
       matchedInfo.toString
         .replaceAll("\r", "\\\\r")
@@ -98,7 +98,7 @@ object ExcelSearch {
     )
   }
 
-  private def createResultBook(file: File, result: Array[MatchedInfo]): Unit = {
+  def createResultBook(file: File, result: Array[MatchedInfo]): Unit = {
     val workbook = WorkbookFactory.create(true)
     val creationHelper = workbook.getCreationHelper
 
