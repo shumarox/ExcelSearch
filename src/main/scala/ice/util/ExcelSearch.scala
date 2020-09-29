@@ -38,6 +38,19 @@ object MatchedType {
 abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val sheetName: String, val name: String, val row: Int, val col: Int, val text: String) {
   def location: String = r1c1ToA1(row, col)
 
+  def url: String = {
+    val fileNameString = file.getAbsolutePath.replaceAll("\\\\", "/").replaceAll(" ", "%20")
+
+    val locationString =
+      if (sheetName == null || sheetName.isEmpty) {
+        ""
+      } else {
+        s"#'${sheetName.replaceAll(" ", "%20")}'!$location"
+      }
+
+    s"file:///$fileNameString$locationString"
+  }
+
   override def toString: String = s"${file.getAbsolutePath},$sheetName,$name,$location,$text"
 }
 
@@ -116,17 +129,7 @@ object ExcelSearch {
 
       cell = row.createCell(2)
       val link = creationHelper.createHyperlink(HyperlinkType.URL)
-
-      val fileNameString = matchedInfo.file.getAbsolutePath.replaceAll("\\\\", "/").replaceAll(" ", "%20")
-
-      val locationString =
-        if (matchedInfo.sheetName == null || matchedInfo.sheetName.isEmpty) {
-          ""
-        } else {
-          s"#'${matchedInfo.sheetName.replaceAll(" ", "%20")}'!${matchedInfo.location}"
-        }
-
-      link.setAddress(s"file:///$fileNameString$locationString")
+      link.setAddress(matchedInfo.url)
       cell.setHyperlink(link)
       cell.setCellValue(matchedInfo.name)
       cell.setCellStyle(style)
