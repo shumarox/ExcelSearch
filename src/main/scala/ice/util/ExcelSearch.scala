@@ -15,7 +15,7 @@ import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimp
 
 import scala.collection.mutable
 import scala.util.matching.Regex
-import scala.util.{Try, Using}
+import scala.util.{Failure, Success, Try, Using}
 
 sealed case class MatchedType(order: Int)
 
@@ -30,6 +30,8 @@ object MatchedType {
   object Comment extends MatchedType(3)
 
   object Shape extends MatchedType(4)
+
+  object Error extends MatchedType(5)
 
 }
 
@@ -53,6 +55,9 @@ class MatchedCommentInfo(file: File, sheetName: String, row: Int, col: Int, text
 
 class MatchedShapeInfo(file: File, sheetName: String, val shapeName: String, row: Int, col: Int, text: String)
   extends MatchedInfo(MatchedType.Shape, file, sheetName, shapeName, row, col, text)
+
+class ErrorInfo(file: File, text: String)
+  extends MatchedInfo(MatchedType.Error, file, "", "エラー", 0, 0, text)
 
 object ExcelSearch {
   def main(args: Array[String]): Unit = {
@@ -209,7 +214,7 @@ class ExcelSearch {
   }
 
   private def search(file: File, regex: Regex): Unit = {
-    Using.resource(WorkbookFactory.create(file, null, true)) { workbook =>
+    Using(WorkbookFactory.create(file, null, true)) { workbook =>
       val bookName = file.getName
 
       if (regex.findFirstIn(bookName).nonEmpty) {
@@ -251,6 +256,12 @@ class ExcelSearch {
           })
         }
       })
+    } match {
+      case Success(_) =>
+      case Failure(ex) =>
+        System.err.println("ERROR: " + file.getAbsolutePath)
+        ex.printStackTrace()
+        resultBuffer += new ErrorInfo(file, ex.toString)
     }
   }
 
@@ -268,8 +279,12 @@ class ExcelSearch {
         val (row, col) = getRowColumnIndex(shape)
         processShape(shape.getShapeName, row, col, shape.getText)
       case shape: HSSFSimpleShape =>
-        val (row, col) = getRowColumnIndex(shape)
-        processShape(shape.getShapeName, row, col, shape.getString.getString)
+        val shapeName = shape.getShapeName
+        if (shapeName != null) {
+          val (row, col) = getRowColumnIndex(shape)
+          val text = Try(shape.getString.getString).getOrElse("")
+          processShape(shapeName, row, col, text)
+        }
       case group: XSSFShapeGroup =>
         val (row, col) = getRowColumnIndex(group)
         group.forEach(walkShape(_, row, col, processShape))
