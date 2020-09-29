@@ -81,9 +81,7 @@ object ExcelSearch {
 
     val result = new ExcelSearch().search(args(0), new Regex(args(1)))
 
-    if (args.length != 3 || args(2) == null || args(2).trim().isEmpty) {
-      printResult(result)
-    } else {
+    if (args.length == 3 && args(2) != null && args(2).trim().nonEmpty) {
       createResultBook(new File(args(2)), result)
 
       if (File.separatorChar == '\\') {
@@ -92,14 +90,12 @@ object ExcelSearch {
     }
   }
 
-  private def printResult(result: Array[MatchedInfo]): Unit = {
-    result.foreach { matchedInfo =>
-      System.out.println(
-        matchedInfo.toString
-          .replaceAll("\r", "\\\\r")
-          .replaceAll("\n", "\\\\n")
-      )
-    }
+  private def printMatchedInfo(matchedInfo: MatchedInfo): Unit = {
+    System.out.println(
+      matchedInfo.toString
+        .replaceAll("\r", "\\\\r")
+        .replaceAll("\n", "\\\\n")
+    )
   }
 
   private def createResultBook(file: File, result: Array[MatchedInfo]): Unit = {
@@ -197,7 +193,10 @@ class ExcelSearch {
 
   private val resultBuffer = mutable.ArrayBuffer[MatchedInfo]()
 
-  private def addMatchedInfo(matchedInfo: MatchedInfo): Unit = resultBuffer += matchedInfo
+  private def addMatchedInfo(matchedInfo: MatchedInfo): Unit = {
+    printMatchedInfo(matchedInfo)
+    resultBuffer += matchedInfo
+  }
 
   def search(path: String, regex: Regex): Array[MatchedInfo] = {
     val fileSearcher: FileVisitor[Path] = new FileVisitor[Path] {
