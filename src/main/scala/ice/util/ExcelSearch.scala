@@ -80,9 +80,9 @@ object ExcelSearch {
   }
 
   private def printResult(result: Array[MatchedInfo]): Unit = {
-    result.foreach { matchInfo =>
+    result.foreach { matchedInfo =>
       System.out.println(
-        matchInfo.toString
+        matchedInfo.toString
           .replaceAll("\r", "\\\\r")
           .replaceAll("\n", "\\\\n")
       )
@@ -194,6 +194,8 @@ class ExcelSearch {
 
   private val resultBuffer = mutable.ArrayBuffer[MatchedInfo]()
 
+  private def addMatchedInfo(matchedInfo: MatchedInfo): Unit = resultBuffer += matchedInfo
+
   def search(path: String, regex: Regex): Array[MatchedInfo] = {
     val fileSearcher: FileVisitor[Path] = new FileVisitor[Path] {
       override def postVisitDirectory(dir: Path, exc: IOException) = FileVisitResult.CONTINUE
@@ -218,26 +220,26 @@ class ExcelSearch {
       val bookName = file.getName
 
       if (regex.findFirstIn(bookName).nonEmpty) {
-        resultBuffer += new MatchedBookNameInfo(file, bookName)
+        addMatchedInfo(new MatchedBookNameInfo(file, bookName))
       }
 
       workbook.forEach(sheet => {
         val sheetName = sheet.getSheetName
 
         if (regex.findFirstIn(sheetName).nonEmpty) {
-          resultBuffer += new MatchedSheetNameInfo(file, sheetName, sheetName)
+          addMatchedInfo(new MatchedSheetNameInfo(file, sheetName, sheetName))
         }
 
         sheet.forEach(row => row.forEach(cell => {
           Try(getCellValue(cell)).foreach { value =>
             if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-              resultBuffer += new MatchedCellInfo(file, sheetName, cell.getRowIndex, cell.getColumnIndex, value)
+              addMatchedInfo(new MatchedCellInfo(file, sheetName, cell.getRowIndex, cell.getColumnIndex, value))
             }
           }
 
           Try(cell.getCellComment.getString.getString).foreach { comment =>
             if (comment.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(comment).nonEmpty) {
-              resultBuffer += new MatchedCommentInfo(file, sheetName, cell.getRowIndex, cell.getColumnIndex, comment)
+              addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getRowIndex, cell.getColumnIndex, comment))
             }
           }
         }))
@@ -248,7 +250,7 @@ class ExcelSearch {
           drawingPatriarch.forEach(shape => {
             def processShape(shapeName: String, row: Int, col: Int, value: String): Unit = {
               if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-                resultBuffer += new MatchedShapeInfo(file, sheetName, shapeName, row, col, value)
+                addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, row, col, value))
               }
             }
 
@@ -261,7 +263,7 @@ class ExcelSearch {
       case Failure(ex) =>
         System.err.println("ERROR: " + file.getAbsolutePath)
         ex.printStackTrace()
-        resultBuffer += new ErrorInfo(file, ex.toString)
+        addMatchedInfo(new ErrorInfo(file, ex.toString))
     }
   }
 
