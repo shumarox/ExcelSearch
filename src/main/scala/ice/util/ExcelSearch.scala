@@ -51,7 +51,7 @@ abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val she
     s"file:///$fileNameString$locationString"
   }
 
-  override def toString: String = s"${file.getAbsolutePath},$sheetName,$name,$location,$text"
+  override def toString: String = s"${file.getParent},${file.getName},$sheetName,$name,$location,$text"
 }
 
 class MatchedBookNameInfo(file: File, text: String)
@@ -118,19 +118,22 @@ object ExcelSearch {
       var cell: Cell = null
 
       cell = row.createCell(0)
-      cell.setCellValue(matchedInfo.file.getAbsolutePath)
+      cell.setCellValue(matchedInfo.file.getParent)
 
       cell = row.createCell(1)
-      cell.setCellValue(matchedInfo.sheetName)
+      cell.setCellValue(matchedInfo.file.getName)
 
       cell = row.createCell(2)
+      cell.setCellValue(matchedInfo.sheetName)
+
+      cell = row.createCell(3)
       val link = creationHelper.createHyperlink(HyperlinkType.URL)
       link.setAddress(matchedInfo.url)
       cell.setHyperlink(link)
       cell.setCellValue(matchedInfo.name)
       cell.setCellStyle(style)
 
-      cell = row.createCell(3)
+      cell = row.createCell(4)
       cell.setCellValue(matchedInfo.text)
 
       rowIndex += 1
