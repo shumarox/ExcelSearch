@@ -79,13 +79,17 @@ object ExcelSearch {
       System.exit(1)
     }
 
-    val result = new ExcelSearch().search(args(0), new Regex(args(1)))
+    val result = new ExcelSearch().search(Paths.get(args(0)), new Regex(args(1)))
 
-    if (args.length == 3 && args(2) != null && args(2).trim().nonEmpty) {
-      createResultBook(new File(args(2)), result)
+    if (args.length == 3) {
+      val resultFile = args(2)
 
-      if (File.separatorChar == '\\') {
-        Runtime.getRuntime.exec(s"cmd /c start ${args(2)}")
+      if (resultFile != null && resultFile.nonEmpty) {
+        createResultBook(new File(resultFile), result)
+
+        if (File.separatorChar == '\\') {
+          Runtime.getRuntime.exec(s"cmd /c start $resultFile")
+        }
       }
     }
   }
@@ -201,7 +205,7 @@ class ExcelSearch {
     resultBuffer += matchedInfo
   }
 
-  def search(path: String, regex: Regex): Array[MatchedInfo] = {
+  def search(path: Path, regex: Regex): Array[MatchedInfo] = {
     val fileSearcher: FileVisitor[Path] = new FileVisitor[Path] {
       override def postVisitDirectory(dir: Path, exc: IOException) = FileVisitResult.CONTINUE
 
@@ -215,7 +219,7 @@ class ExcelSearch {
       override def visitFileFailed(file: Path, exc: IOException) = FileVisitResult.CONTINUE
     }
 
-    Files.walkFileTree(Paths.get(path), fileSearcher)
+    Files.walkFileTree(path, fileSearcher)
 
     resultBuffer.toArray
   }
