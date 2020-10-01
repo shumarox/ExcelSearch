@@ -9,7 +9,7 @@ import org.apache.poi.common.usermodel.HyperlinkType
 import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShapeGroup, HSSFSimpleShape}
 import org.apache.poi.ss.formula.eval.ErrorEval
 import org.apache.poi.ss.usermodel._
-import org.apache.poi.ss.util.{CellRangeAddress, CellReference}
+import org.apache.poi.ss.util.CellRangeAddress
 import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimpleShape}
 
 import scala.collection.mutable
@@ -144,8 +144,6 @@ object ExcelSearch {
       workbook.write(outputStream)
     }
   }
-
-  def r1c1ToA1(rowIndex: Int, columnIndex: Int): String = new CellReference(rowIndex, columnIndex).formatAsString()
 
   def getCellValue(cell: Cell): String = {
     import CellType._
