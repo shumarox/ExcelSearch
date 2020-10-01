@@ -35,8 +35,8 @@ object MatchedType {
 
 }
 
-abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val sheetName: String, val name: String, val row: Int, val col: Int, val text: String) {
-  def location: String = r1c1ToA1(row, col)
+abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val sheetName: String, val name: String, val rowIndex: Int, val columnIndex: Int, val text: String) {
+  def location: String = r1c1ToA1(rowIndex, columnIndex)
 
   def url: String = {
     val fileNameString = file.getAbsolutePath.replaceAll("\\\\", "/").replaceAll(" ", "%20")
@@ -60,14 +60,14 @@ class MatchedBookNameInfo(file: File, text: String)
 class MatchedSheetNameInfo(file: File, sheetName: String, text: String)
   extends MatchedInfo(MatchedType.SheetName, file, sheetName, "シート名", 0, 0, text)
 
-class MatchedCellInfo(file: File, sheetName: String, row: Int, col: Int, text: String)
-  extends MatchedInfo(MatchedType.Cell, file, sheetName, r1c1ToA1(row, col), row, col, text)
+class MatchedCellInfo(file: File, sheetName: String, rowIndex: Int, columnIndex: Int, text: String)
+  extends MatchedInfo(MatchedType.Cell, file, sheetName, r1c1ToA1(rowIndex, columnIndex), rowIndex, columnIndex, text)
 
-class MatchedCommentInfo(file: File, sheetName: String, row: Int, col: Int, text: String)
-  extends MatchedInfo(MatchedType.Comment, file, sheetName, "コメント " + r1c1ToA1(row, col), row, col, text)
+class MatchedCommentInfo(file: File, sheetName: String, rowIndex: Int, columnIndex: Int, text: String)
+  extends MatchedInfo(MatchedType.Comment, file, sheetName, "コメント " + r1c1ToA1(rowIndex, columnIndex), rowIndex, columnIndex, text)
 
-class MatchedShapeInfo(file: File, sheetName: String, val shapeName: String, row: Int, col: Int, text: String)
-  extends MatchedInfo(MatchedType.Shape, file, sheetName, shapeName, row, col, text)
+class MatchedShapeInfo(file: File, sheetName: String, val shapeName: String, rowIndex: Int, columnIndex: Int, text: String)
+  extends MatchedInfo(MatchedType.Shape, file, sheetName, shapeName, rowIndex, columnIndex, text)
 
 class ErrorInfo(file: File, text: String)
   extends MatchedInfo(MatchedType.Error, file, "", "エラー", 0, 0, text)
@@ -148,7 +148,7 @@ object ExcelSearch {
     }
   }
 
-  def r1c1ToA1(row: Int, col: Int): String = new CellReference(row, col).formatAsString()
+  def r1c1ToA1(rowIndex: Int, columnIndex: Int): String = new CellReference(rowIndex, columnIndex).formatAsString()
 
   def getCellValue(cell: Cell): String = {
     import CellType._
@@ -257,9 +257,9 @@ class ExcelSearch {
 
         if (drawingPatriarch != null) {
           drawingPatriarch.forEach(shape => {
-            def processShape(shapeName: String, row: Int, col: Int, value: String): Unit = {
+            def processShape(shapeName: String, rowIndex: Int, columnIndex: Int, value: String): Unit = {
               if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-                addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, row, col, value))
+                addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, rowIndex, columnIndex, value))
               }
             }
 
@@ -276,32 +276,32 @@ class ExcelSearch {
     }
   }
 
-  private def walkShape(shape: Any, ancestorRow: Int, ancestorColumn: Int, processShape: (String, Int, Int, String) => ()): Unit = {
+  private def walkShape(shape: Any, ancestorRowIndex: Int, ancestorColumnIndex: Int, processShape: (String, Int, Int, String) => ()): Unit = {
     def getRowColumnIndex(shape: Shape): (Int, Int) =
       shape.getAnchor match {
-        case null => (ancestorRow, ancestorColumn)
+        case null => (ancestorRowIndex, ancestorColumnIndex)
         case anchor: XSSFClientAnchor => (anchor.getRow1, anchor.getCol1.toInt)
         case anchor: HSSFClientAnchor => (anchor.getRow1, anchor.getCol1.toInt)
-        case _ => (ancestorRow, ancestorColumn)
+        case _ => (ancestorRowIndex, ancestorColumnIndex)
       }
 
     shape match {
       case shape: XSSFSimpleShape =>
-        val (row, col) = getRowColumnIndex(shape)
-        processShape(shape.getShapeName, row, col, shape.getText)
+        val (rowIndex, columnIndex) = getRowColumnIndex(shape)
+        processShape(shape.getShapeName, rowIndex, columnIndex, shape.getText)
       case shape: HSSFSimpleShape =>
         val shapeName = shape.getShapeName
         if (shapeName != null) {
-          val (row, col) = getRowColumnIndex(shape)
+          val (rowIndex, columnIndex) = getRowColumnIndex(shape)
           val text = Try(shape.getString.getString).getOrElse("")
-          processShape(shapeName, row, col, text)
+          processShape(shapeName, rowIndex, columnIndex, text)
         }
       case group: XSSFShapeGroup =>
-        val (row, col) = getRowColumnIndex(group)
-        group.forEach(walkShape(_, row, col, processShape))
+        val (rowIndex, columnIndex) = getRowColumnIndex(group)
+        group.forEach(walkShape(_, rowIndex, columnIndex, processShape))
       case group: HSSFShapeGroup =>
-        val (row, col) = getRowColumnIndex(group)
-        group.forEach(walkShape(_, row, col, processShape))
+        val (rowIndex, columnIndex) = getRowColumnIndex(group)
+        group.forEach(walkShape(_, rowIndex, columnIndex, processShape))
       case _ =>
     }
   }
