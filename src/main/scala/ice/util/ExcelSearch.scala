@@ -9,7 +9,7 @@ import org.apache.poi.common.usermodel.HyperlinkType
 import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShapeGroup, HSSFSimpleShape}
 import org.apache.poi.ss.formula.eval.ErrorEval
 import org.apache.poi.ss.usermodel._
-import org.apache.poi.ss.util.CellReference
+import org.apache.poi.ss.util.{CellRangeAddress, CellReference}
 import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimpleShape}
 
 import scala.collection.mutable
@@ -277,8 +277,8 @@ class ExcelSearch {
     def getLocation(shape: Shape): String =
       shape.getAnchor match {
         case null => ancestorLocation
-        case anchor: XSSFClientAnchor => r1c1ToA1(anchor.getRow1, anchor.getCol1.toInt)
-        case anchor: HSSFClientAnchor => r1c1ToA1(anchor.getRow1, anchor.getCol1.toInt)
+        case anchor: XSSFClientAnchor => new CellRangeAddress(anchor.getRow1, anchor.getRow2, anchor.getCol1.toInt, anchor.getCol2.toInt).formatAsString()
+        case anchor: HSSFClientAnchor => new CellRangeAddress(anchor.getRow1, anchor.getRow2, anchor.getCol1.toInt, anchor.getCol2.toInt).formatAsString()
         case _ => ancestorLocation
       }
 
