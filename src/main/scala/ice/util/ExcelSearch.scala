@@ -5,7 +5,6 @@ import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.text.SimpleDateFormat
 
-import ice.util.ExcelSearch.r1c1ToA1
 import org.apache.poi.common.usermodel.HyperlinkType
 import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShapeGroup, HSSFSimpleShape}
 import org.apache.poi.ss.formula.eval.ErrorEval
@@ -35,9 +34,7 @@ object MatchedType {
 
 }
 
-abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val sheetName: String, val name: String, val rowIndex: Int, val columnIndex: Int, val text: String) {
-  def location: String = r1c1ToA1(rowIndex, columnIndex)
-
+abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val sheetName: String, val name: String, val location: String, val text: String) {
   def url: String = {
     val fileNameString = file.getAbsolutePath.replaceAll("\\\\", "/").replaceAll(" ", "%20")
 
@@ -55,22 +52,22 @@ abstract class MatchedInfo(val matchedType: MatchedType, val file: File, val she
 }
 
 class MatchedBookNameInfo(file: File, text: String)
-  extends MatchedInfo(MatchedType.BookName, file, "", "ブック名", 0, 0, text)
+  extends MatchedInfo(MatchedType.BookName, file, "", "ブック名", "", text)
 
 class MatchedSheetNameInfo(file: File, sheetName: String, text: String)
-  extends MatchedInfo(MatchedType.SheetName, file, sheetName, "シート名", 0, 0, text)
+  extends MatchedInfo(MatchedType.SheetName, file, sheetName, "シート名", "A1", text)
 
-class MatchedCellInfo(file: File, sheetName: String, rowIndex: Int, columnIndex: Int, text: String)
-  extends MatchedInfo(MatchedType.Cell, file, sheetName, r1c1ToA1(rowIndex, columnIndex), rowIndex, columnIndex, text)
+class MatchedCellInfo(file: File, sheetName: String, location: String, text: String)
+  extends MatchedInfo(MatchedType.Cell, file, sheetName, location, location, text)
 
-class MatchedCommentInfo(file: File, sheetName: String, rowIndex: Int, columnIndex: Int, text: String)
-  extends MatchedInfo(MatchedType.Comment, file, sheetName, "コメント " + r1c1ToA1(rowIndex, columnIndex), rowIndex, columnIndex, text)
+class MatchedCommentInfo(file: File, sheetName: String, location: String, text: String)
+  extends MatchedInfo(MatchedType.Comment, file, sheetName, "コメント " + location, location, text)
 
-class MatchedShapeInfo(file: File, sheetName: String, val shapeName: String, rowIndex: Int, columnIndex: Int, text: String)
-  extends MatchedInfo(MatchedType.Shape, file, sheetName, shapeName, rowIndex, columnIndex, text)
+class MatchedShapeInfo(file: File, sheetName: String, val shapeName: String, location: String, text: String)
+  extends MatchedInfo(MatchedType.Shape, file, sheetName, shapeName, location, text)
 
 class ErrorInfo(file: File, text: String)
-  extends MatchedInfo(MatchedType.Error, file, "", "エラー", 0, 0, text)
+  extends MatchedInfo(MatchedType.Error, file, "", "エラー", "", text)
 
 object ExcelSearch {
   def main(args: Array[String]): Unit = {
@@ -242,13 +239,13 @@ class ExcelSearch {
         sheet.forEach(row => row.forEach(cell => {
           Try(getCellValue(cell)).foreach { value =>
             if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-              addMatchedInfo(new MatchedCellInfo(file, sheetName, cell.getRowIndex, cell.getColumnIndex, value))
+              addMatchedInfo(new MatchedCellInfo(file, sheetName, cell.getAddress.formatAsString(), value))
             }
           }
 
           Try(cell.getCellComment.getString.getString).foreach { comment =>
             if (comment.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(comment).nonEmpty) {
-              addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getRowIndex, cell.getColumnIndex, comment))
+              addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getAddress.formatAsString(), comment))
             }
           }
         }))
@@ -257,13 +254,13 @@ class ExcelSearch {
 
         if (drawingPatriarch != null) {
           drawingPatriarch.forEach(shape => {
-            def processShape(shapeName: String, rowIndex: Int, columnIndex: Int, value: String): Unit = {
+            def processShape(shapeName: String, location: String, value: String): Unit = {
               if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-                addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, rowIndex, columnIndex, value))
+                addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, location, value))
               }
             }
 
-            walkShape(shape, 0, 0, processShape)
+            walkShape(shape, "", processShape)
           })
         }
       })
@@ -276,32 +273,27 @@ class ExcelSearch {
     }
   }
 
-  private def walkShape(shape: Any, ancestorRowIndex: Int, ancestorColumnIndex: Int, processShape: (String, Int, Int, String) => ()): Unit = {
-    def getRowColumnIndex(shape: Shape): (Int, Int) =
+  private def walkShape(shape: Any, ancestorLocation: String, processShape: (String, String, String) => ()): Unit = {
+    def getLocation(shape: Shape): String =
       shape.getAnchor match {
-        case null => (ancestorRowIndex, ancestorColumnIndex)
-        case anchor: XSSFClientAnchor => (anchor.getRow1, anchor.getCol1.toInt)
-        case anchor: HSSFClientAnchor => (anchor.getRow1, anchor.getCol1.toInt)
-        case _ => (ancestorRowIndex, ancestorColumnIndex)
+        case null => ancestorLocation
+        case anchor: XSSFClientAnchor => r1c1ToA1(anchor.getRow1, anchor.getCol1.toInt)
+        case anchor: HSSFClientAnchor => r1c1ToA1(anchor.getRow1, anchor.getCol1.toInt)
+        case _ => ancestorLocation
       }
 
     shape match {
       case shape: XSSFSimpleShape =>
-        val (rowIndex, columnIndex) = getRowColumnIndex(shape)
-        processShape(shape.getShapeName, rowIndex, columnIndex, shape.getText)
+        processShape(shape.getShapeName, getLocation(shape), shape.getText)
       case shape: HSSFSimpleShape =>
         val shapeName = shape.getShapeName
         if (shapeName != null) {
-          val (rowIndex, columnIndex) = getRowColumnIndex(shape)
-          val text = Try(shape.getString.getString).getOrElse("")
-          processShape(shapeName, rowIndex, columnIndex, text)
+          processShape(shapeName, getLocation(shape), Try(shape.getString.getString).getOrElse(""))
         }
       case group: XSSFShapeGroup =>
-        val (rowIndex, columnIndex) = getRowColumnIndex(group)
-        group.forEach(walkShape(_, rowIndex, columnIndex, processShape))
+        group.forEach(walkShape(_, getLocation(group), processShape))
       case group: HSSFShapeGroup =>
-        val (rowIndex, columnIndex) = getRowColumnIndex(group)
-        group.forEach(walkShape(_, rowIndex, columnIndex, processShape))
+        group.forEach(walkShape(_, getLocation(group), processShape))
       case _ =>
     }
   }
