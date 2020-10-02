@@ -110,7 +110,7 @@ object ExcelSearch {
   }
 
   def createResultBook(file: File, result: Array[MatchedInfo]): Unit = {
-    val templateFile = new File(getClass.getClassLoader.getResource("template.xlsm").getFile)
+    val templateFile = getClass.getClassLoader.getResourceAsStream("template.xlsm")
 
     Using.resource(new XSSFWorkbook(templateFile)) { workbook =>
       val creationHelper = workbook.getCreationHelper
