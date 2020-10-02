@@ -9,8 +9,8 @@ import org.apache.poi.common.usermodel.HyperlinkType
 import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShapeGroup, HSSFSimpleShape}
 import org.apache.poi.ss.formula.eval.ErrorEval
 import org.apache.poi.ss.usermodel._
-import org.apache.poi.ss.util.CellRangeAddress
-import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimpleShape}
+import org.apache.poi.ss.util.{CellRangeAddress, CellReference}
+import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimpleShape, XSSFWorkbook}
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -76,17 +76,27 @@ object ExcelSearch {
       System.exit(1)
     }
 
+    val resultFile = if (args.length == 3) args(2) else null
+
+    if (resultFile != null && resultFile.nonEmpty) {
+      if (!resultFile.endsWith(".xlsm")) {
+        System.err.println("Result file's extension should be '.xlsm'")
+        System.exit(1)
+      }
+
+      if (new File(resultFile).exists()) {
+        System.err.println("Result file is already exists.")
+        System.exit(1)
+      }
+    }
+
     val result = new ExcelSearch().search(Paths.get(args(0)), new Regex(args(1)))
 
-    if (args.length == 3) {
-      val resultFile = args(2)
+    if (resultFile != null && resultFile.nonEmpty) {
+      createResultBook(new File(resultFile), result)
 
-      if (resultFile != null && resultFile.nonEmpty) {
-        createResultBook(new File(resultFile), result)
-
-        if (File.separatorChar == '\\') {
-          Runtime.getRuntime.exec(s"cmd /c start $resultFile")
-        }
+      if (File.separatorChar == '\\') {
+        Runtime.getRuntime.exec(s"cmd /c start $resultFile")
       }
     }
   }
@@ -100,48 +110,59 @@ object ExcelSearch {
   }
 
   def createResultBook(file: File, result: Array[MatchedInfo]): Unit = {
-    val workbook = WorkbookFactory.create(true)
-    val creationHelper = workbook.getCreationHelper
+    val templateFile = new File(getClass.getClassLoader.getResource("template.xlsm").getFile)
 
-    val sheet = workbook.createSheet
+    Using.resource(new XSSFWorkbook(templateFile)) { workbook =>
+      val creationHelper = workbook.getCreationHelper
 
-    var rowIndex = 0
+      val sheet = workbook.getSheetAt(0)
 
-    val font = workbook.createFont
-    font.setColor(IndexedColors.BLUE.getIndex)
-    font.setUnderline(Font.U_SINGLE)
-    val style = workbook.createCellStyle
-    style.setFont(font)
+      var rowIndex = 0
 
-    result.foreach { matchedInfo =>
-      val row = sheet.createRow(rowIndex)
+      val font = workbook.createFont
+      font.setColor(IndexedColors.BLUE.getIndex)
+      font.setUnderline(Font.U_SINGLE)
+      val style = workbook.createCellStyle
+      style.setFont(font)
 
-      var cell: Cell = null
+      result.foreach { matchedInfo =>
+        val row = sheet.createRow(rowIndex)
 
-      cell = row.createCell(0)
-      cell.setCellValue(matchedInfo.file.getParent)
+        var cell: Cell = null
+        var link: Hyperlink = null
 
-      cell = row.createCell(1)
-      cell.setCellValue(matchedInfo.file.getName)
+        cell = row.createCell(0)
+        cell.setCellValue(matchedInfo.file.getParentFile.getAbsolutePath)
 
-      cell = row.createCell(2)
-      cell.setCellValue(matchedInfo.sheetName)
+        cell = row.createCell(1)
+        cell.setCellValue(matchedInfo.file.getName)
 
-      cell = row.createCell(3)
-      val link = creationHelper.createHyperlink(HyperlinkType.URL)
-      link.setAddress(matchedInfo.url)
-      cell.setHyperlink(link)
-      cell.setCellValue(matchedInfo.name)
-      cell.setCellStyle(style)
+        cell = row.createCell(2)
+        cell.setCellValue(matchedInfo.sheetName)
 
-      cell = row.createCell(4)
-      cell.setCellValue(matchedInfo.text)
+        cell = row.createCell(3)
+        link = creationHelper.createHyperlink(HyperlinkType.DOCUMENT)
+        link.setAddress(new CellReference(rowIndex, 3).formatAsString())
+        cell.setHyperlink(link)
+        cell.setCellValue(matchedInfo.location)
+        cell.setCellStyle(style)
 
-      rowIndex += 1
-    }
+        cell = row.createCell(4)
+        link = creationHelper.createHyperlink(HyperlinkType.URL)
+        link.setAddress(matchedInfo.url)
+        cell.setHyperlink(link)
+        cell.setCellValue(matchedInfo.name)
+        cell.setCellStyle(style)
 
-    Using.resource(new BufferedOutputStream(new FileOutputStream(file))) { outputStream =>
-      workbook.write(outputStream)
+        cell = row.createCell(5)
+        cell.setCellValue(matchedInfo.text)
+
+        rowIndex += 1
+      }
+
+      Using.resource(new BufferedOutputStream(new FileOutputStream(file))) { outputStream =>
+        workbook.write(outputStream)
+      }
     }
   }
 
