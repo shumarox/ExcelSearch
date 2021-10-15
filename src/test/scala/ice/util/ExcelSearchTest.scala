@@ -5,6 +5,6 @@ import org.junit.Test
 class ExcelSearchTest {
   @Test
   def mainTest(): Unit = {
-    ExcelSearch.main(Array[String]("src/test/resources", ".", "result.xlsm"))
+    ExcelSearch.main(Array[String]("src/test/resources", "コメント", "result.xlsm"))
   }
 }

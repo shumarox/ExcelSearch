@@ -1,18 +1,21 @@
 package ice.util
 
-import java.io.{BufferedOutputStream, File, FileOutputStream, IOException}
-import java.nio.file._
-import java.nio.file.attribute.BasicFileAttributes
-import java.text.SimpleDateFormat
-
+import ice.data.SyncArrayBuffer
 import org.apache.poi.common.usermodel.HyperlinkType
 import org.apache.poi.hssf.usermodel.{HSSFClientAnchor, HSSFShapeGroup, HSSFSimpleShape}
 import org.apache.poi.ss.formula.eval.ErrorEval
-import org.apache.poi.ss.usermodel._
+import org.apache.poi.ss.usermodel.*
 import org.apache.poi.ss.util.{CellRangeAddress, CellReference}
 import org.apache.poi.xssf.usermodel.{XSSFClientAnchor, XSSFShapeGroup, XSSFSimpleShape, XSSFWorkbook}
 
-import scala.collection.mutable
+import java.io.{BufferedOutputStream, File, FileOutputStream, IOException}
+import java.nio.file.*
+import java.nio.file.attribute.BasicFileAttributes
+import java.text.SimpleDateFormat
+import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+import scala.util.control.Breaks
 import scala.util.matching.Regex
 import scala.util.{Failure, Success, Try, Using}
 
@@ -167,7 +170,7 @@ object ExcelSearch {
   }
 
   def getCellValue(cell: Cell): String = {
-    import CellType._
+    import CellType.*
 
     val cellType =
       cell.getCellType match {
@@ -212,23 +215,37 @@ object ExcelSearch {
 
 class ExcelSearch {
 
-  import ExcelSearch._
+  import ExcelSearch.*
 
-  private val resultBuffer = mutable.ArrayBuffer[MatchedInfo]()
+  private val resultBuffer = new SyncArrayBuffer[MatchedInfo]
+
+  private val counter = new AtomicInteger
 
   private def addMatchedInfo(matchedInfo: MatchedInfo): Unit = {
     printMatchedInfo(matchedInfo)
     resultBuffer += matchedInfo
   }
 
-  def search(path: Path, regex: Regex): Array[MatchedInfo] = {
+  def search(path: Path, regex: Regex, withComments: Boolean = false): Array[MatchedInfo] = {
     val fileSearcher: FileVisitor[Path] = new FileVisitor[Path] {
       override def postVisitDirectory(dir: Path, exc: IOException) = FileVisitResult.CONTINUE
 
       override def preVisitDirectory(dir: Path, attrs: BasicFileAttributes) = FileVisitResult.CONTINUE
 
       override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {
-        if (file.toFile.getName.matches(".*\\.xls[xm]?$")) search(file.toFile, regex)
+        counter.incrementAndGet()
+
+        Future {
+          try {
+            if (file.toFile.getName.matches(".*\\.xls[xm]?$")) searchImpl(file.toFile, regex, withComments)
+          } catch {
+            case th: Throwable =>
+              th.printStackTrace()
+          } finally {
+            counter.decrementAndGet()
+          }
+        }
+
         FileVisitResult.CONTINUE
       }
 
@@ -237,10 +254,22 @@ class ExcelSearch {
 
     Files.walkFileTree(path, fileSearcher)
 
-    resultBuffer.toArray
+    Breaks.breakable {
+      while (true) {
+        if (counter.get == 0) Breaks.break
+        Thread.sleep(100)
+      }
+    }
+
+    resultBuffer.sorted(
+      (a, b) => a.file.getParentFile.getAbsolutePath.compareTo(b.file.getParentFile.getAbsolutePath) match {
+        case 0 => a.file.getName.compareTo(b.file.getName)
+        case b => b
+      }
+    ).toArray
   }
 
-  private def search(file: File, regex: Regex): Unit = {
+  private def searchImpl(file: File, regex: Regex, withComments: Boolean): Unit = {
     Using(WorkbookFactory.create(file, null, true)) { workbook =>
       val bookName = file.getName
 
@@ -262,9 +291,11 @@ class ExcelSearch {
             }
           }
 
-          Try(cell.getCellComment.getString.getString).foreach { comment =>
-            if (comment.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(comment).nonEmpty) {
-              addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getAddress.formatAsString(), comment))
+          if (withComments) {
+            Try(cell.getCellComment.getString.getString).foreach { comment =>
+              if (comment.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(comment).nonEmpty) {
+                addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getAddress.formatAsString(), comment))
+              }
             }
           }
         }))
@@ -292,7 +323,7 @@ class ExcelSearch {
     }
   }
 
-  private def walkShape(shape: Any, ancestorLocation: String, processShape: (String, String, String) => ()): Unit = {
+  private def walkShape(shape: Any, ancestorLocation: String, processShape: (String, String, String) => Unit): Unit = {
     def getLocation(shape: Shape): String =
       shape.getAnchor match {
         case null => ancestorLocation
