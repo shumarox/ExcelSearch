@@ -1,3 +1,5 @@
+import sbtassembly.MergeStrategy
+
 name := "ExcelSearch"
 version := "0.0.1"
 
@@ -32,3 +34,8 @@ libraryDependencies ++= Seq(
   "junit" % "junit" % "4.13.2" % Test,
   "com.novocode" % "junit-interface" % "0.11" % Test,
 )
+
+ThisBuild / assemblyMergeStrategy := {
+  case PathList(x @ _*) if x.last.endsWith("module-info.class") => MergeStrategy.discard
+  case x => (ThisBuild / assemblyMergeStrategy).value.apply(x)
+}
