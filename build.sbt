@@ -17,7 +17,6 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-//  "org.apache.poi" % "poi" % "5.0.0",
   "org.apache.poi" % "poi-ooxml" % "5.0.0"
     exclude("com.github.virtuald", "*")
     exclude("commons-codec", "*")
