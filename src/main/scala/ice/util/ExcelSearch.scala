@@ -226,7 +226,7 @@ class ExcelSearch {
     resultBuffer += matchedInfo
   }
 
-  def search(path: Path, regex: Regex, withComments: Boolean = false): Array[MatchedInfo] = {
+  def search(path: Path, regex: Regex, withHidden: Boolean = false, withComments: Boolean = false): Array[MatchedInfo] = {
     val fileSearcher: FileVisitor[Path] = new FileVisitor[Path] {
       override def postVisitDirectory(dir: Path, exc: IOException) = FileVisitResult.CONTINUE
 
@@ -237,7 +237,7 @@ class ExcelSearch {
 
         Future {
           try {
-            if (file.toFile.getName.matches(".*\\.xls[xm]?$")) searchImpl(file.toFile, regex, withComments)
+            if (file.toFile.getName.matches(".*\\.xls[xm]?$")) searchImpl(file.toFile, regex, withHidden, withComments)
           } catch {
             case th: Throwable =>
               th.printStackTrace()
@@ -269,7 +269,7 @@ class ExcelSearch {
     ).toArray
   }
 
-  private def searchImpl(file: File, regex: Regex, withComments: Boolean): Unit = {
+  private def searchImpl(file: File, regex: Regex, withHidden: Boolean, withComments: Boolean): Unit = {
     Using(WorkbookFactory.create(file, null, true)) { workbook =>
       val bookName = file.getName
 
@@ -278,40 +278,44 @@ class ExcelSearch {
       }
 
       workbook.forEach(sheet => {
-        val sheetName = sheet.getSheetName
+        val worksheetIndex = workbook.getSheetIndex(sheet.getSheetName)
 
-        if (regex.findFirstIn(sheetName).nonEmpty) {
-          addMatchedInfo(new MatchedSheetNameInfo(file, sheetName, sheetName))
-        }
+        if (withHidden || !workbook.isSheetHidden(worksheetIndex) && !workbook.isSheetVeryHidden(worksheetIndex)) {
+          val sheetName = sheet.getSheetName
 
-        sheet.forEach(row => row.forEach(cell => {
-          Try(getCellValue(cell)).foreach { value =>
-            if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-              addMatchedInfo(new MatchedCellInfo(file, sheetName, cell.getAddress.formatAsString(), value))
-            }
+          if (regex.findFirstIn(sheetName).nonEmpty) {
+            addMatchedInfo(new MatchedSheetNameInfo(file, sheetName, sheetName))
           }
 
-          if (withComments) {
-            Try(cell.getCellComment.getString.getString).foreach { comment =>
-              if (comment.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(comment).nonEmpty) {
-                addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getAddress.formatAsString(), comment))
-              }
-            }
-          }
-        }))
-
-        val drawingPatriarch = sheet.getDrawingPatriarch
-
-        if (drawingPatriarch != null) {
-          drawingPatriarch.forEach(shape => {
-            def processShape(shapeName: String, location: String, value: String): Unit = {
+          sheet.forEach(row => row.forEach(cell => {
+            Try(getCellValue(cell)).foreach { value =>
               if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
-                addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, location, value))
+                addMatchedInfo(new MatchedCellInfo(file, sheetName, cell.getAddress.formatAsString(), value))
               }
             }
 
-            walkShape(shape, "", processShape)
-          })
+            if (withComments) {
+              Try(cell.getCellComment.getString.getString).foreach { comment =>
+                if (comment.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(comment).nonEmpty) {
+                  addMatchedInfo(new MatchedCommentInfo(file, sheetName, cell.getAddress.formatAsString(), comment))
+                }
+              }
+            }
+          }))
+
+          val drawingPatriarch = sheet.getDrawingPatriarch
+
+          if (drawingPatriarch != null) {
+            drawingPatriarch.forEach(shape => {
+              def processShape(shapeName: String, location: String, value: String): Unit = {
+                if (value.split("\r?\n").exists(s => regex.findFirstIn(s).nonEmpty) || regex.findFirstIn(value).nonEmpty) {
+                  addMatchedInfo(new MatchedShapeInfo(file, sheetName, shapeName, location, value))
+                }
+              }
+
+              walkShape(shape, "", processShape)
+            })
+          }
         }
       })
     } match {
